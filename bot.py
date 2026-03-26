@@ -1,9 +1,4 @@
-"""
-╔══════════════════════════════════════════════════════════════╗
-║       BOT DISCORD — PARIS SPORTIFS LIVE 🎰                   ║
-║  Alertes live · Leaderboard · Alertes cotes · 100% Gratuit   ║
-╚══════════════════════════════════════════════════════════════╝
-“””
+# Bot Discord Paris Sportifs Live
 
 import discord
 from discord.ext import commands, tasks
