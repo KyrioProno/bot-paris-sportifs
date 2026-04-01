@@ -1425,4 +1425,3 @@ if __name__ == "__main__":
         print("❌ FOOTBALL_API_KEY manquant dans .env")
     else:
         bot.run(DISCORD_TOKEN)
-    
