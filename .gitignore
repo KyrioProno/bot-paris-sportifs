@@ -1,0 +1,5 @@
+# TACTIX — sources uniquement
+tactix/node_modules
+tactix/dist
+tactix/preview
+tactix/.vite
