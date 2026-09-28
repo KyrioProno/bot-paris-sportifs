@@ -90,6 +90,8 @@ export function PitchCanvas({
   const pinch = useRef<{ dist: number; mid: Point; viewport: Viewport } | null>(null);
   const panStart = useRef<{ client: Point; viewport: Viewport } | null>(null);
   const gesture = useRef<'none' | 'object' | 'draw' | 'pan'>('none');
+  /** Après un pincement, le doigt restant continue de déplacer le terrain. */
+  const panAfterPinch = useRef(false);
   const drawPoints = useRef<Point[]>([]);
   const longPressTimer = useRef<number | null>(null);
   const lastTap = useRef<{ t: number; x: number; y: number } | null>(null);
@@ -272,6 +274,18 @@ export function PitchCanvas({
       return;
     }
 
+    if (gesture.current === 'none' && !pinch.current && panAfterPinch.current && panStart.current && pointers.current.size === 1) {
+      const m = metrics();
+      if (m) {
+        onViewportChange({
+          scale: panStart.current.viewport.scale,
+          tx: panStart.current.viewport.tx + (e.clientX - panStart.current.client.x) / m.s,
+          ty: panStart.current.viewport.ty + (e.clientY - panStart.current.client.y) / m.s,
+        });
+      }
+      return;
+    }
+
     if (gesture.current === 'pan' && panStart.current) {
       const m = metrics();
       if (!m) return;
@@ -287,7 +301,18 @@ export function PitchCanvas({
     const info = pointers.current.get(e.pointerId);
     clearLongPress();
     pointers.current.delete(e.pointerId);
-    if (pointers.current.size < 2) pinch.current = null;
+    if (pointers.current.size < 2 && pinch.current) {
+      pinch.current = null;
+      // Le doigt resté posé prend le relais pour déplacer le terrain.
+      if (pointers.current.size === 1) {
+        const remaining = [...pointers.current.values()][0];
+        panAfterPinch.current = true;
+        panStart.current = {
+          client: { x: remaining.x, y: remaining.y },
+          viewport: { ...viewport },
+        };
+      }
+    }
     if (!info) return;
     const mppNow = toWorld(e.clientX, e.clientY).mpp;
     const world = toWorld(e.clientX, e.clientY).world;
@@ -311,6 +336,12 @@ export function PitchCanvas({
       gesture.current = 'none';
       panStart.current = null;
       if (wasTap) onGesture({ kind: 'tap', world, hit: null, metersPerPixel: mppNow });
+      return;
+    }
+    if (panAfterPinch.current) {
+      panAfterPinch.current = false;
+      panStart.current = null;
+      if (!info.moved) onGesture({ kind: 'tap', world, hit: null, metersPerPixel: mppNow });
     }
   };
 

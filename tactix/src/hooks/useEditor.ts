@@ -349,7 +349,15 @@ export function useEditor(docId: string) {
         resolve,
       });
       if (!outcome) {
-        notify('Tracé trop court');
+        // Un simple appui sur le terrain ne doit pas déclencher d'alerte.
+        let raw = 0;
+        for (let i = 1; i < rawPoints.length; i++) {
+          raw += Math.hypot(
+            rawPoints[i].x - rawPoints[i - 1].x,
+            rawPoints[i].y - rawPoints[i - 1].y,
+          );
+        }
+        if (raw >= 1) notify('Tracé trop court');
         return;
       }
       // Persistance : ballon éventuel, possession, puis l'action.
