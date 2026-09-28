@@ -10,6 +10,17 @@ Design sombre premium, pensée pour être utilisée d'une main, sur le terrain.
 
 ---
 
+## Tester sans rien installer
+
+Trois façons d'ouvrir l'application immédiatement :
+
+1. **Fichier unique** — [`docs/tactix.html`](../docs/tactix.html) : un seul fichier HTML
+   autonome (349 Ko, aucun fichier annexe, aucune connexion). Ouvrez-le directement dans un
+   navigateur, ou hébergez-le n'importe où.
+2. **Hébergement statique** — le dossier [`docs/`](../docs) contient le build complet, prêt
+   pour GitHub Pages (`https://<compte>.github.io/bot-paris-sportifs/`), Netlify, Vercel, etc.
+3. **En local** — voir ci-dessous.
+
 ## Démarrage
 
 ```bash
@@ -21,11 +32,13 @@ npm run dev        # http://localhost:5173  (accessible aussi depuis le réseau 
 Autres commandes :
 
 ```bash
-npm run build      # build de production (dist/)
-npm run preview    # prévisualisation du build
-npm run typecheck  # vérification TypeScript
-npm test           # autotest du moteur (140 vérifications) + test de rendu
-npm run render     # génère des aperçus PNG des terrains (dossier preview/)
+npm run build          # build de production (dist/)
+npm run preview        # prévisualisation du build
+npm run typecheck      # vérification TypeScript
+npm test               # moteur + rendu + fichier autonome
+npm run render         # aperçus PNG des terrains (dossier preview/)
+npm run build:offline  # fichier unique autonome → ../docs/tactix.html
+npm run publish        # build complet + fichier unique → ../docs (hébergement statique)
 ```
 
 ---
@@ -185,6 +198,9 @@ npm test
   assistant (création et modification).
 * `scripts/smoketest.tsx` — rendu réel (SSR) de l'application, de l'éditeur et du mode
   présentation : détection d'erreurs de rendu.
+* `scripts/offline-test.mjs` — charge le fichier autonome `docs/tactix.html` dans un DOM,
+  exécute son script et clique réellement dans l'interface (navigation, création d'un
+  exercice, rendu du terrain).
 
 ---
 

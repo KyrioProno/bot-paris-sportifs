@@ -1,10 +1,14 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { viteSingleFile } from 'vite-plugin-singlefile';
 
 // TACTIX — configuration Vite.
 // host 0.0.0.0 + allowedHosts pour fonctionner derrière le proxy de prévisualisation.
+// SINGLE=1 produit un fichier HTML unique et autonome (utilisable hors ligne).
+const single = process.env.SINGLE === '1';
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), ...(single ? [viteSingleFile()] : [])],
   // Chemins relatifs : le build fonctionne aussi bien sur un domaine racine
   // que dans un sous-dossier (GitHub Pages, partage de fichier…).
   base: './',
@@ -21,7 +25,13 @@ export default defineConfig({
     allowedHosts: true,
   },
   build: {
-    outDir: 'dist',
+    outDir: single ? 'dist-single' : 'dist',
     sourcemap: false,
+    // Le fichier unique doit aussi s'ouvrir par double-clic (file://) :
+    // on produit un script classique, sans module ES externe.
+    target: 'es2018',
+    rollupOptions: single
+      ? { output: { format: 'iife' as const, inlineDynamicImports: true } }
+      : undefined,
   },
 });
