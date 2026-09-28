@@ -5,6 +5,9 @@ import react from '@vitejs/plugin-react';
 // host 0.0.0.0 + allowedHosts pour fonctionner derrière le proxy de prévisualisation.
 export default defineConfig({
   plugins: [react()],
+  // Chemins relatifs : le build fonctionne aussi bien sur un domaine racine
+  // que dans un sous-dossier (GitHub Pages, partage de fichier…).
+  base: './',
   server: {
     host: '0.0.0.0',
     port: 5173,
