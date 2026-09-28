@@ -283,6 +283,6 @@ export type Route =
   | { name: 'exercises' }
   | { name: 'sessions' }
   | { name: 'library'; filter?: 'all' | 'tactic' | 'exercise' | 'session' | 'favorite' }
-  | { name: 'editor'; docId: string }
+  | { name: 'editor'; docId: string; fresh?: boolean }
   | { name: 'session'; sessionId: string }
   | { name: 'present'; docId: string };

@@ -58,7 +58,8 @@ function Shell() {
   const newDoc = useCallback(
     (kind: DocKind) => {
       const doc = createDoc(kind);
-      setRoute({ name: 'editor', docId: doc.id });
+      // Nouveau document : on propose la configuration rapide du terrain.
+      setRoute({ name: 'editor', docId: doc.id, fresh: true });
     },
     [createDoc],
   );
@@ -98,6 +99,7 @@ function Shell() {
       <>
         <EditorView
           docId={route.docId}
+          fresh={route.fresh}
           onExit={() => setRoute({ name: 'home' })}
           onPresent={(docId) => setRoute({ name: 'present', docId })}
         />

@@ -197,10 +197,12 @@ export function ObjectSheet({
       }
       onClose={onClose}
     >
-      {kind === 'player' && <PlayerEditor editor={editor} object={object} />}
-      {kind === 'ball' && <BallEditor editor={editor} object={object} />}
-      {kind === 'equipment' && <EquipmentEditor editor={editor} object={object} />}
-      {(kind === 'goal' || kind === 'zone') && <PropEditor editor={editor} object={object} />}
+      {kind === 'player' && <PlayerEditor key={object.id} editor={editor} object={object} />}
+      {kind === 'ball' && <BallEditor key={object.id} editor={editor} object={object} />}
+      {kind === 'equipment' && <EquipmentEditor key={object.id} editor={editor} object={object} />}
+      {(kind === 'goal' || kind === 'zone') && (
+        <PropEditor key={object.id} editor={editor} object={object} />
+      )}
 
       <div className="divider" />
       <div className="grid-2">

@@ -24,6 +24,7 @@ import {
   stepPosition,
 } from '../src/domain/steps';
 import { createAction } from '../src/domain/actions';
+import { resolveDrawnAction } from '../src/domain/drawing';
 import { computeFrame, stepDuration } from '../src/domain/animation';
 import { buildMarkings } from '../src/domain/pitch/markings';
 import { PITCH_TEMPLATES } from '../src/domain/pitch/dimensions';
@@ -172,6 +173,117 @@ check(
   check('suppression : une étape est retirée', removed.steps.length === doc.steps.length - 1);
   const moved = moveStep(doc, 0, 2);
   check('réorganisation : les étapes changent d’ordre', moved.steps[2].id === doc.steps[0].id);
+}
+
+// ── 3ter. Tracé au doigt → action intelligente ───────────────
+{
+  const doc = createDemoExercise();
+  const homes = playersOf(doc, 'home');
+  const ballDoc = ballsOf(doc)[0];
+  const passer = homes[0];
+  const receiver = homes[1];
+  const resolve = (id: string) => {
+    const o = doc.objects.find((x) => x.id === id)!;
+    return { x: o.x, y: o.y };
+  };
+
+  // Tracé brut bruité du doigt, terminé près du receveur
+  const raw = [
+    { x: passer.x, y: passer.y },
+    { x: passer.x + 6, y: passer.y + 2.4 },
+    { x: passer.x + 12, y: passer.y + 4.1 },
+    { x: receiver.x + 1.2, y: receiver.y - 0.8 },
+  ];
+  const outcome = resolveDrawnAction({
+    doc,
+    stepIndex: 0,
+    rawPoints: raw,
+    type: 'pass',
+    ownerId: passer.id,
+    resolve,
+  })!;
+  check('tracé : action créée', !!outcome);
+  check('tracé : tracé nettoyé plus court que le brut', outcome.action.points.length <= raw.length);
+  check('tracé : destinataire détecté', outcome.action.receiverId === receiver.id);
+  const passEnd = outcome.action.points[outcome.action.points.length - 1];
+  check(
+    'tracé : la passe se termine sur le receveur',
+    Math.hypot(passEnd.x - receiver.x, passEnd.y - receiver.y) < 0.001,
+  );
+  check('tracé : ballon lié à l’action', outcome.action.ballId === ballDoc.id);
+  check('tracé : possession transmise au départ', outcome.ballOwner?.ownerId === passer.id || !outcome.ballOwner);
+
+  const applied = applyActions(doc, [outcome.action]).doc;
+  check('tracé : l’action est enregistrée dans l’étape', applied.steps[0].actions.some((a) => a.id === outcome.action.id));
+  check('tracé : le receveur possède le ballon à l’étape suivante', ballOwnerAt(applied, 1, ballDoc.id) === receiver.id);
+
+  // Sur un document neuf, le tracé crée bien l'étape suivante
+  const fresh = createExercise('Nouveau');
+  const freshPlayer = playersOf(fresh, 'home')[0];
+  const freshBall = ballsOf(fresh)[0];
+  const freshOutcome = resolveDrawnAction({
+    doc: fresh,
+    stepIndex: 0,
+    rawPoints: [
+      { x: freshPlayer.x, y: freshPlayer.y },
+      { x: freshPlayer.x + 8, y: freshPlayer.y + 4 },
+    ],
+    type: 'run',
+    ownerId: freshPlayer.id,
+    resolve: (id) => {
+      const o = fresh.objects.find((x) => x.id === id)!;
+      return { x: o.x, y: o.y };
+    },
+  })!;
+  const freshApplied = applyActions(fresh, [freshOutcome.action]).doc;
+  check('tracé : une étape est créée automatiquement sur un exercice neuf', freshApplied.steps.length === 2);
+  void freshBall;
+
+  // Course : le joueur finit à l'extrémité du tracé
+  const runner = homes[2];
+  const runRaw = [
+    { x: runner.x, y: runner.y },
+    { x: runner.x + 4, y: runner.y - 6 },
+    { x: runner.x + 9, y: runner.y - 12 },
+  ];
+  const run = resolveDrawnAction({
+    doc,
+    stepIndex: 0,
+    rawPoints: runRaw,
+    type: 'run',
+    ownerId: runner.id,
+    resolve,
+  })!;
+  const runApplied = applyActions(doc, [run.action]).doc;
+  const finalPos = stepPosition(runApplied, 1, runner.id);
+  const runEnd = run.action.points[run.action.points.length - 1];
+  check(
+    'tracé : la course place le joueur à l’extrémité',
+    approx(finalPos.x, runEnd.x, 0.01) && approx(finalPos.y, runEnd.y, 0.01),
+  );
+
+  // Tracé trop court : refusé
+  const tooShort = resolveDrawnAction({
+    doc,
+    stepIndex: 0,
+    rawPoints: [{ x: passer.x, y: passer.y }, { x: passer.x + 0.4, y: passer.y }],
+    type: 'run',
+    ownerId: passer.id,
+    resolve,
+  });
+  check('tracé : un tracé trop court est ignoré', tooShort === null);
+
+  // Terrain sans ballon : un ballon est créé
+  const noBall = { ...doc, objects: doc.objects.filter((o) => o.kind !== 'ball') };
+  const created = resolveDrawnAction({
+    doc: noBall,
+    stepIndex: 0,
+    rawPoints: [{ x: passer.x, y: passer.y }, { x: passer.x + 10, y: passer.y }],
+    type: 'dribble',
+    ownerId: passer.id,
+    resolve,
+  });
+  check('tracé : un ballon est créé si nécessaire', !!created?.newBall);
 }
 
 // ── 4. Formats de jeu (1v1 → 11v11) ──────────────────────────

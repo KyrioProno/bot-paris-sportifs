@@ -18,6 +18,7 @@ import {
 } from '../components/editor/sheets';
 import { Btn, Icons, Sheet, Toast } from '../components/ui';
 import { QuickCreateBar, QuickActionStrip } from '../components/editor/QuickCreate';
+import { SetupSheet } from '../components/editor/SetupSheet';
 import { PITCH_TEMPLATES } from '../domain/pitch/dimensions';
 import { goalConfigLabel } from '../domain/goals';
 import { formatLabel } from '../domain/formats';
@@ -39,20 +40,24 @@ type SheetKind =
   | 'step'
   | 'assistant'
   | 'menu'
+  | 'setup'
   | 'help';
 
 export function EditorView({
   docId,
   onExit,
   onPresent,
+  fresh,
 }: {
   docId: string;
+  /** Document tout juste créé : propose la configuration rapide du terrain. */
+  fresh?: boolean;
   onExit: () => void;
   onPresent: (docId: string) => void;
 }) {
   const editor = useEditor(docId);
   const { setFavorite, ws } = useStore();
-  const [sheet, setSheet] = useState<SheetKind>(null);
+  const [sheet, setSheet] = useState<SheetKind>(fresh ? 'setup' : null);
   const [quickCreate, setQuickCreate] = useState(false);
   const [askKeepActions, setAskKeepActions] = useState(false);
   const doc = editor.doc;
@@ -205,6 +210,9 @@ export function EditorView({
         >
           ⚡ Création rapide
         </button>
+        <button className="chip" onClick={() => setSheet('setup')}>
+          🧭 Configuration
+        </button>
         <button className="chip" onClick={() => setSheet('help')}>
           ❔ Aide
         </button>
@@ -347,6 +355,8 @@ export function EditorView({
         onCreate={() => undefined}
       />
       <DeleteConfirmSheet editor={editor} onClose={() => editor.setAskDelete(null)} />
+
+      <SetupSheet editor={editor} open={sheet === 'setup'} onClose={() => setSheet(null)} />
 
       <Sheet open={sheet === 'help'} title="Bien utiliser TACTIX" onClose={() => setSheet(null)}>
         <HelpContent />

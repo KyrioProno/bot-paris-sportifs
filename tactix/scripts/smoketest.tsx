@@ -14,6 +14,7 @@ import { SessionsView } from '../src/views/SessionsView';
 import { SessionEditorView } from '../src/views/SessionEditorView';
 import { HomeView } from '../src/views/HomeView';
 import { createSessionFixture } from './fixtures';
+import { groupSessionByBlock, sessionDuration } from '../src/store/workspace';
 import { createDemoExercise } from '../src/domain/doc';
 
 // ── Environnement minimal ────────────────────────────────────
@@ -127,8 +128,21 @@ const sessionHtml = renderToString(
   </WorkspaceProvider>,
 );
 expect('le constructeur de séance se monte', sessionHtml.includes('Échauffement') || sessionHtml.includes('Durée totale'));
+expect('la durée totale de séance est calculée', sessionDuration(session) === 80);
+const blocks = groupSessionByBlock(session);
+expect('la répartition par blocs est calculée', blocks.warmup === 15 && blocks.tactics === 25);
 
-// 4. Mode présentation
+// 4. Configuration rapide (nouveau document)
+const setupHtml = renderToString(
+  <WorkspaceProvider>
+    <EditorView docId={demo.id} fresh onExit={noop} onPresent={noop} />
+  </WorkspaceProvider>,
+);
+expect('la configuration rapide s’ouvre sur un nouveau document', setupHtml.includes('Configuration rapide'));
+expect('la configuration propose les terrains', setupHtml.includes('Dernier tiers') && setupHtml.includes('Jeu réduit'));
+expect('la configuration propose les onglets buts/format', setupHtml.includes('Format') && setupHtml.includes('Buts'));
+
+// 5. Mode présentation
 const presentHtml = renderToString(
   <WorkspaceProvider>
     <PresentView docId={demo.id} onExit={() => undefined} />

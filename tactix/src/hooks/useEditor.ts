@@ -12,17 +12,10 @@ import type {
   TactixDoc,
   Team,
 } from '../domain/types';
-import {
-  ACTION_LABEL,
-  actionDescriptor,
-  createAction,
-  findReceiver,
-  uid,
-} from '../domain/actions';
+import { ACTION_LABEL, uid } from '../domain/actions';
+import { nearestPlayer, resolveDrawnAction } from '../domain/drawing';
 import {
   applyActions,
-  ballAt,
-  ballOwnerAt,
   countLinkedActions,
   deleteObject,
   duplicateStep as duplicateStepDoc,
@@ -54,7 +47,7 @@ import {
   type Guide,
 } from '../engine/interaction';
 import { screenBox } from '../domain/pitch/orientation';
-import { clamp, simplifyPath } from '../domain/geometry';
+import { clamp } from '../domain/geometry';
 import { useStore } from '../store/workspace';
 import { computeFrame, stepDuration } from '../domain/animation';
 
@@ -119,6 +112,8 @@ export function useEditor(docId: string) {
   });
   const [askDelete, setAskDelete] = useState<{ ids: string[]; linked: number } | null>(null);
   const [suggestion, setSuggestion] = useState<{ text: string; run: () => void } | null>(null);
+  /** Évite de reproposer sans cesse la même suggestion (discrétion). */
+  const lastSuggestion = useRef<string>('');
 
   const dragRef = useRef<{
     ids: string[];
@@ -300,26 +295,25 @@ export function useEditor(docId: string) {
     const homes = doc.objects.filter((o) => o.kind === 'player' && o.team === 'home').length;
     const aways = doc.objects.filter((o) => o.kind === 'player' && o.team === 'away').length;
     const field = doc.objects.filter((o) => o.kind === 'equipment').length;
+    const propose = (key: string, text: string, run: () => void) => {
+      if (lastSuggestion.current === key) return;
+      lastSuggestion.current = key;
+      setSuggestion({ text, run });
+    };
     if (homes >= 2 && aways >= 2 && doc.format !== `${homes}v${aways}`) {
-      setSuggestion({
-        text: `Format ${homes} contre ${aways} ?`,
-        run: () => {
-          patch((d) => applyFormatDoc(d, `${homes}v${aways}`));
-          setSuggestion(null);
-          notify(`Format ${homes}v${aways} appliqué`);
-        },
+      propose(`format:${homes}v${aways}`, `Format ${homes} contre ${aways} ?`, () => {
+        patch((d) => applyFormatDoc(d, `${homes}v${aways}`));
+        setSuggestion(null);
+        notify(`Format ${homes}v${aways} appliqué`);
       });
     } else if (field >= 4 && field % 4 === 0) {
-      setSuggestion({
-        text: 'Créer un carré de passes ?',
-        run: () => {
-          patch((d) => ({
-            ...d,
-            info: { ...d.info, category: d.info.category ?? 'Technique', subcategory: 'Passe' },
-          }));
-          setSuggestion(null);
-          notify('Carré de passes prêt');
-        },
+      propose('carre-de-passes', 'Créer un carré de passes ?', () => {
+        patch((d) => ({
+          ...d,
+          info: { ...d.info, category: d.info.category ?? 'Technique', subcategory: 'Passe' },
+        }));
+        setSuggestion(null);
+        notify('Carré de passes prêt');
       });
     } else {
       setSuggestion(null);
@@ -333,14 +327,7 @@ export function useEditor(docId: string) {
       if (!doc) return null;
       const selected = selectedObjects.find((o) => o.kind === 'player');
       if (selected) return selected.id;
-      let best: { id: string; d: number } | null = null;
-      for (const o of doc.objects) {
-        if (o.kind !== 'player') continue;
-        const p = resolve(o.id);
-        const d = Math.hypot(p.x - startPoint.x, p.y - startPoint.y);
-        if (!best || d < best.d) best = { id: o.id, d };
-      }
-      return best && best.d < 12 ? best.id : null;
+      return nearestPlayer(doc, startPoint, resolve)?.id ?? null;
     },
     [doc, resolve, selectedObjects],
   );
@@ -348,74 +335,49 @@ export function useEditor(docId: string) {
   const commitDraw = useCallback(
     (rawPoints: Point[], actionType: ActionType) => {
       if (!doc || rawPoints.length < 2) return;
-      const desc = actionDescriptor(actionType);
-      const tolerance = clamp(doc.pitch.view.w / 140, 0.35, 2.2);
-      let points = simplifyPath(rawPoints, tolerance);
-      if (points.length < 2) points = [rawPoints[0], rawPoints[rawPoints.length - 1]];
-      let total = 0;
-      for (let i = 1; i < points.length; i++) {
-        total += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
-      }
-      if (total < 2) {
-        notify('Tracé trop court');
-        return;
-      }
-      const ownerId = ownerForDrawing(points[0]);
+      const ownerId = ownerForDrawing(rawPoints[0]);
       if (!ownerId) {
         notify('Sélectionnez d’abord un joueur');
         return;
       }
-      const ownerPos = resolve(ownerId);
-      points = [{ ...ownerPos }, ...points.slice(1)];
-
-      const ball = ballAt(doc, safeStep);
-      let ballId: string | null = null;
-      let receiverId: string | null = null;
-      let createdBall: SceneObject | null = null;
-
-      if (desc.ball) {
-        if (ball) {
-          ballId = ball.id;
-          if (ballOwnerAt(doc, safeStep, ball.id) !== ownerId) {
-            patch((d) => setBallOwner(d, safeStep, ball.id, ownerId));
-          }
-        } else {
-          createdBall = makeBall(ownerPos.x, ownerPos.y, ownerId);
-          ballId = createdBall.id;
-          patch((d) => {
-            const steps = d.steps.map((s, i) =>
-              i === safeStep
-                ? { ...s, ballOwners: { ...s.ballOwners, [createdBall!.id]: ownerId } }
-                : s,
-            );
-            return { ...d, objects: [...d.objects, createdBall as SceneObject], steps };
-          });
-        }
-      }
-
-      if (actionType === 'pass') {
-        const end = points[points.length - 1];
-        const candidates = doc.objects
-          .filter((o) => o.kind === 'player' && o.id !== ownerId)
-          .map((o) => ({ id: o.id, ...resolve(o.id) }));
-        receiverId = findReceiver(end, candidates, Math.max(7, doc.pitch.view.w * 0.1), ownerId);
-        if (receiverId) {
-          const rp = resolve(receiverId);
-          points = [...points.slice(0, -1), { x: rp.x, y: rp.y }];
-        }
-      }
-
-      const action = createAction(actionType, ownerId, points, {
+      const outcome = resolveDrawnAction({
+        doc,
         stepIndex: safeStep,
-        ballId,
-        receiverId,
-        style: desc.style,
+        rawPoints,
+        type: actionType,
+        ownerId,
+        resolve,
       });
-      patch((d) => applyActions(d, [action]).doc);
+      if (!outcome) {
+        notify('Tracé trop court');
+        return;
+      }
+      // Persistance : ballon éventuel, possession, puis l'action.
+      const { action, newBall, ballOwner } = outcome;
+      patch((d) => {
+        let next = d;
+        if (newBall) {
+          next = { ...next, objects: [...next.objects, newBall] };
+        }
+        if (ballOwner) {
+          next = {
+            ...next,
+            objects: next.objects.map((o) =>
+              o.id === ballOwner.ballId ? { ...o, ownerId: ballOwner.ownerId } : o,
+            ),
+            steps: next.steps.map((st, i) =>
+              i === safeStep
+                ? { ...st, ballOwners: { ...st.ballOwners, [ballOwner.ballId]: ballOwner.ownerId } }
+                : st,
+            ),
+          };
+        }
+        return applyActions(next, [action]).doc;
+      });
+
       const owner = doc.objects.find((o) => o.id === ownerId);
-      const recv = receiverId ? doc.objects.find((o) => o.id === receiverId) : undefined;
-      if (actionType === 'pass' && recv) {
-        notify(`Passe ${owner?.number ?? ''} → ${recv.number ?? ''}`);
+      if (actionType === 'pass' && outcome.receiver) {
+        notify(`Passe ${owner?.number ?? ''} → ${outcome.receiver.number ?? ''}`);
       } else if (actionType === 'pass') {
         notify('Passe dans l’espace — étape créée');
       } else if (actionType === 'shot') {
@@ -970,21 +932,6 @@ function autoKeeper(doc: TactixDoc): SceneObject {
     role: 'GK',
     keeper: true,
   });
-}
-
-function setBallOwner(
-  doc: TactixDoc,
-  stepIndex: number,
-  ballId: string,
-  ownerId: string | null,
-): TactixDoc {
-  return {
-    ...doc,
-    objects: doc.objects.map((o) => (o.id === ballId ? { ...o, ownerId } : o)),
-    steps: doc.steps.map((s, i) =>
-      i === stepIndex ? { ...s, ballOwners: { ...s.ballOwners, [ballId]: ownerId } } : s,
-    ),
-  };
 }
 
 /** Une trajectoire suit le point de départ de son joueur. */
